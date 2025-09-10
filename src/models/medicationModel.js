@@ -1,19 +1,84 @@
-// src/models/medicationModel.js
 import supabase from "../config/supabaseClient.js";
 
 export const MedicationModel = {
-  async find() {
+  async find({ category_id, supplier_id, name, sku, min_price, max_price, min_quantity, sort }) {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("medications")
         .select(`
           id, sku, name, description, price, quantity,
           category_id, categories(name),
-          supplier_id, suppliers(name)
-        `)
-        .order("name", { ascending: true });
+          supplier_id, suppliers(name, phone, email)
+        `);
+
+      // Filter berdasarkan category_id
+      if (category_id) {
+        query = query.eq("category_id", category_id);
+      }
+
+      // Filter berdasarkan supplier_id
+      if (supplier_id) {
+        query = query.eq("supplier_id", supplier_id);
+      }
+
+      // Filter berdasarkan name (case-insensitive)
+      if (name) {
+        query = query.ilike("name", `%${name}%`);
+      }
+
+      // Filter berdasarkan sku (case-insensitive)
+      if (sku) {
+        query = query.ilike("sku", `%${sku}%`);
+      }
+
+      // Filter berdasarkan rentang price
+      if (min_price) {
+        const minPrice = parseFloat(min_price);
+        if (isNaN(minPrice) || minPrice < 0) {
+          throw new Error("min_price must be a valid positive number");
+        }
+        query = query.gte("price", minPrice);
+      }
+      if (max_price) {
+        const maxPrice = parseFloat(max_price);
+        if (isNaN(maxPrice) || maxPrice < 0) {
+          throw new Error("max_price must be a valid positive number");
+        }
+        query = query.lte("price", maxPrice);
+      }
+
+      // Filter berdasarkan min_quantity
+      if (min_quantity) {
+        const minQuantity = parseInt(min_quantity);
+        if (isNaN(minQuantity) || minQuantity < 0) {
+          throw new Error("min_quantity must be a valid positive integer");
+        }
+        query = query.gte("quantity", minQuantity);
+      }
+
+      // Sorting
+      if (sort) {
+        const validSortFields = ["name", "price", "quantity", "sku"];
+        const [field, order] = sort.split("_");
+        if (!validSortFields.includes(field)) {
+          throw new Error(`Invalid sort field. Must be one of: ${validSortFields.join(", ")}`);
+        }
+        if (order !== "asc" && order !== "desc") {
+          throw new Error("Sort order must be 'asc' or 'desc'");
+        }
+        query = query.order(field, { ascending: order === "asc" });
+      } else {
+        // Default sorting by name ASC
+        query = query.order("name", { ascending: true });
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
+
+      if (!data || data.length === 0) {
+        return [];
+      }
 
       return data.map((med) => ({
         id: med.id,
@@ -29,6 +94,8 @@ export const MedicationModel = {
         supplier: {
           id: med.supplier_id,
           name: med.suppliers.name,
+          phone: med.suppliers.phone,
+          email: med.suppliers.email,
         },
       }));
     } catch (err) {
@@ -76,13 +143,21 @@ export const MedicationModel = {
         }
       }
 
+      // Validasi price dan quantity
+      if (price && (isNaN(price) || price < 0)) {
+        throw new Error("Price must be a valid positive number");
+      }
+      if (quantity && (isNaN(quantity) || quantity < 0)) {
+        throw new Error("Quantity must be a valid positive integer");
+      }
+
       const { data, error } = await supabase
         .from("medications")
-        .insert([{ sku, name, description, category_id, supplier_id, price, quantity }])
+        .insert([{ sku, name, description, category_id, supplier_id, price: price || 0, quantity: quantity || 0 }])
         .select(`
           id, sku, name, description, price, quantity,
           category_id, categories(name),
-          supplier_id, suppliers(name)
+          supplier_id, suppliers(name, phone, email)
         `)
         .single();
 
@@ -102,6 +177,8 @@ export const MedicationModel = {
         supplier: {
           id: data.supplier_id,
           name: data.suppliers.name,
+          phone: data.suppliers.phone,
+          email: data.suppliers.email,
         },
       };
     } catch (err) {
