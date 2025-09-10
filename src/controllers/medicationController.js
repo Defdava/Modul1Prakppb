@@ -47,16 +47,31 @@ export const getMedications = async (req, res) => {
       sort
     } = req.query;
 
-    const medications = await MedicationModel.find({
-      category_id,
-      supplier_id,
-      name,
-      sku,
-      min_price,
-      max_price,
-      min_quantity,
-      sort
-    });
+    // Query dasar
+    let query = {
+      ...(category_id && { category_id }),
+      ...(supplier_id && { supplier_id }),
+      ...(name && { name: { $regex: name, $options: 'i' } }),
+      ...(sku && { sku: { $regex: sku, $options: 'i' } }),
+      ...(min_price && { price: { $gte: parseFloat(min_price) } }),
+      ...(max_price && { price: { $lte: parseFloat(max_price) } }),
+      ...(min_quantity && { quantity: { $gte: parseInt(min_quantity) } })
+    };
+
+    let medications = await MedicationModel.find(query);
+
+    // Mengurutkan data jika parameter sort ada
+    if (sort) {
+      const [field, order] = sort.split('_');
+      medications.sort((a, b) => {
+        const valueA = a[field];
+        const valueB = b[field];
+        if (order === 'desc') {
+          return valueA < valueB ? 1 : valueA > valueB ? -1 : 0;
+        }
+        return valueA < valueB ? -1 : valueA > valueB ? 1 : 0;
+      });
+    }
 
     if (medications.length === 0) {
       return res.status(404).json({ message: 'No medications found matching the criteria' });
