@@ -1,13 +1,35 @@
-// src/controllers/medicationController.js
 import { MedicationModel } from "../models/medicationModel.js";
 
 // Fungsi bantu untuk sorting array di JS
 const sortMedications = (data, sort) => {
   if (!sort) return data;
+
+  const validSortFields = ['name', 'price', 'quantity', 'sku', 'category_id', 'supplier_id'];
   const [field, order] = sort.split("_"); // contoh: price_asc
+
+  // Validasi field sorting
+  if (!validSortFields.includes(field)) {
+    throw new Error(`Invalid sort field. Must be one of: ${validSortFields.join(', ')}`);
+  }
+
+  // Validasi order
+  if (order !== 'asc' && order !== 'desc') {
+    throw new Error("Sort order must be 'asc' or 'desc'");
+  }
+
   return data.sort((a, b) => {
-    if (a[field] < b[field]) return order === "asc" ? -1 : 1;
-    if (a[field] > b[field]) return order === "asc" ? 1 : -1;
+    // Handle tipe data yang berbeda
+    let valueA = a[field];
+    let valueB = b[field];
+
+    // Konversi ke lowercase untuk string agar case-insensitive
+    if (typeof valueA === 'string') {
+      valueA = valueA.toLowerCase();
+      valueB = valueB.toLowerCase();
+    }
+
+    if (valueA < valueB) return order === "asc" ? -1 : 1;
+    if (valueA > valueB) return order === "asc" ? 1 : -1;
     return 0;
   });
 };
@@ -24,7 +46,11 @@ export const getMedications = async (req, res) => {
     let medications = await MedicationModel.find(filter);
 
     // sorting
-    medications = sortMedications(medications, sort);
+    try {
+      medications = sortMedications(medications, sort);
+    } catch (sortError) {
+      return res.status(400).json({ error: sortError.message });
+    }
 
     res.json(medications);
   } catch (err) {
