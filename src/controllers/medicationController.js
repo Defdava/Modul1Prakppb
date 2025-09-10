@@ -1,56 +1,66 @@
-import { MedicationModel } from "../models/medicationModel.js";
+import { Medication, Category, Supplier } from "../models/index.js"; // Sesuaikan dengan lokasi model Anda
+import { Op } from 'sequelize'; // Untuk operator LIKE dan rentang
 
-// Fungsi bantu untuk sorting array di JS
-const sortMedications = (data, sort) => {
-  if (!sort) return data;
+// Fungsi bantu untuk validasi sorting
+const getSortOption = (sort) => {
+  if (!sort) return {};
 
   const validSortFields = ['name', 'price', 'quantity', 'sku', 'category_id', 'supplier_id'];
-  const [field, order] = sort.split("_"); // contoh: price_asc
+  const [field, order] = sort.split("_");
 
-  // Validasi field sorting
   if (!validSortFields.includes(field)) {
     throw new Error(`Invalid sort field. Must be one of: ${validSortFields.join(', ')}`);
   }
-
-  // Validasi order
   if (order !== 'asc' && order !== 'desc') {
     throw new Error("Sort order must be 'asc' or 'desc'");
   }
 
-  return data.sort((a, b) => {
-    // Handle tipe data yang berbeda
-    let valueA = a[field];
-    let valueB = b[field];
-
-    // Konversi ke lowercase untuk string agar case-insensitive
-    if (typeof valueA === 'string') {
-      valueA = valueA.toLowerCase();
-      valueB = valueB.toLowerCase();
-    }
-
-    if (valueA < valueB) return order === "asc" ? -1 : 1;
-    if (valueA > valueB) return order === "asc" ? 1 : -1;
-    return 0;
-  });
+  return { [field]: order.toUpperCase() }; // Sequelize expects ASC or DESC
 };
 
 export const getMedications = async (req, res) => {
   try {
-    const { category_id, supplier_id, sort } = req.query;
+    const {
+      category_id,
+      supplier_id,
+      name,
+      sku,
+      min_price,
+      max_price,
+      min_quantity,
+      sort
+    } = req.query;
 
-    // filter
-    let filter = {};
-    if (category_id) filter.category_id = category_id;
-    if (supplier_id) filter.supplier_id = supplier_id;
+    // Filter
+    let where = {};
+    if (category_id) where.category_id = category_id;
+    if (supplier_id) where.supplier_id = supplier_id;
+    if (name) where.name = { [Op.iLike]: `%${name}%` }; // Case-insensitive partial match
+    if (sku) where.sku = { [Op.iLike]: `%${sku}%` }; // Case-insensitive partial match
+    if (min_price) where.price = { ...where.price, [Op.gte]: parseFloat(min_price) };
+    if (max_price) where.price = { ...where.price, [Op.lte]: parseFloat(max_price) };
+    if (min_quantity) where.quantity = { [Op.gte]: parseInt(min_quantity) };
 
-    let medications = await MedicationModel.find(filter);
-
-    // sorting
+    // Sorting
+    let order = [];
     try {
-      medications = sortMedications(medications, sort);
+      const sortOption = getSortOption(sort);
+      if (Object.keys(sortOption).length > 0) {
+        order.push([Object.keys(sortOption)[0], sortOption[Object.keys(sortOption)[0]]]);
+      }
     } catch (sortError) {
       return res.status(400).json({ error: sortError.message });
     }
+
+    // Query ke database
+    const medications = await Medication.findAll({
+      where,
+      order,
+      include: [
+        { model: Category, attributes: ['name'] },
+        { model: Supplier, attributes: ['name', 'phone', 'email'] }
+      ]
+    });
 
     res.json(medications);
   } catch (err) {
@@ -67,14 +77,14 @@ export const createMedication = async (req, res) => {
       return res.status(400).json({ error: "Nama, category_id, dan supplier_id wajib diisi" });
     }
 
-    const medication = await MedicationModel.create({
+    const medication = await Medication.create({
       sku,
       name,
       description,
       category_id,
       supplier_id,
       price,
-      quantity,
+      quantity
     });
 
     res.status(201).json(medication);
