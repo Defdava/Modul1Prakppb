@@ -1,27 +1,30 @@
 // src/controllers/medicationController.js
 import { MedicationModel } from "../models/medicationModel.js";
 
+// Fungsi bantu untuk sorting array di JS
+const sortMedications = (data, sort) => {
+  if (!sort) return data;
+  const [field, order] = sort.split("_"); // contoh: price_asc
+  return data.sort((a, b) => {
+    if (a[field] < b[field]) return order === "asc" ? -1 : 1;
+    if (a[field] > b[field]) return order === "asc" ? 1 : -1;
+    return 0;
+  });
+};
+
 export const getMedications = async (req, res) => {
   try {
     const { category_id, supplier_id, sort } = req.query;
 
-    // Membuat objek filter
+    // filter
     let filter = {};
     if (category_id) filter.category_id = category_id;
     if (supplier_id) filter.supplier_id = supplier_id;
 
-    // Ambil data dari database
     let medications = await MedicationModel.find(filter);
 
-    // Sorting di JavaScript
-    if (sort) {
-      const [field, order] = sort.split("_"); // contoh: price_asc atau name_desc
-      medications.sort((a, b) => {
-        if (a[field] < b[field]) return order === "asc" ? -1 : 1;
-        if (a[field] > b[field]) return order === "asc" ? 1 : -1;
-        return 0;
-      });
-    }
+    // sorting
+    medications = sortMedications(medications, sort);
 
     res.json(medications);
   } catch (err) {
