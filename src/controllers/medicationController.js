@@ -10,14 +10,19 @@ export const getMedications = async (req, res) => {
     if (category_id) filter.category_id = category_id;
     if (supplier_id) filter.supplier_id = supplier_id;
 
-    // Membuat objek sorting
-    let sortOption = {};
+    // Ambil data dari database
+    let medications = await MedicationModel.find(filter);
+
+    // Sorting di JavaScript
     if (sort) {
       const [field, order] = sort.split("_"); // contoh: price_asc atau name_desc
-      sortOption[field] = order === "asc" ? 1 : -1;
+      medications.sort((a, b) => {
+        if (a[field] < b[field]) return order === "asc" ? -1 : 1;
+        if (a[field] > b[field]) return order === "asc" ? 1 : -1;
+        return 0;
+      });
     }
 
-    const medications = await MedicationModel.find(filter).sort(sortOption);
     res.json(medications);
   } catch (err) {
     console.error("Error di controller getMedications:", err);
